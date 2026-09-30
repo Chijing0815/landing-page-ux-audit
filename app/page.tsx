@@ -37,6 +37,15 @@ export default function Home() {
         body: JSON.stringify({ url }),
       });
 
+      // 1. Check if the server returned an HTML error page (404/500)
+      const contentType = res.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await res.text();
+        console.error('Server returned HTML response:', text);
+        throw new Error(`Server Error (${res.status}): Please check folder path or Vercel logs.`);
+      }
+
+      // 2. Safe to parse JSON now
       const data = await res.json();
 
       if (!res.ok) {

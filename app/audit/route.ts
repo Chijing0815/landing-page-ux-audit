@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import puppeteer from 'puppeteer-core';
-import chromium from '@sparticuz/chromium';
 import { GoogleGenAI } from '@google/genai';
 
-// Configure route timeout limit for Vercel Serverless
-export const maxDuration = 60; // Max duration 60 seconds
+export const maxDuration = 60;
 
+// Initialize SDK instance
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY || '',
 });
 
 export async function POST(req: NextRequest) {
-  let browser;
   try {
     const { url } = await req.json();
 
@@ -24,50 +21,51 @@ export async function POST(req: NextRequest) {
       targetUrl = `https://${targetUrl}`;
     }
 
-    // 1. Scrape Page Data
-    const isLocal = process.env.NODE_ENV === 'development';
-
-    browser = await puppeteer.launch({
-      args: isLocal ? [] : chromium.args,
-      defaultViewport: { width: 1280, height: 800 },
-      executablePath: isLocal
-        ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
-        : await chromium.executablePath(),
-      headless: true,
+    // 1. Scrape Page Content using Fetch
+    const response = await fetch(targetUrl, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
     });
 
-    const page = await browser.newPage();
-    await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+    if (!response.ok) {
+      return NextResponse.json(
+        { error: `Failed to fetch page: ${response.statusText}` },
+        { status: 400 }
+      );
+    }
 
-    const extracted = await page.evaluate(() => {
-      const clean = (s: string | null) => s?.replace(/\s+/g, ' ').trim() || '';
+    const html = await response.text();
 
-      const h1Elements = Array.from(document.querySelectorAll('h1'));
-      const ctaElements = Array.from(document.querySelectorAll('a, button'));
-      const pElements = Array.from(document.querySelectorAll('p'));
+    // Clean HTML to extract title, headings, buttons, and paragraphs
+    const metaTitle = html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1] || '';
+    
+    const extractTags = (tag: string) => {
+      const regex = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\/${tag}>`, 'gi');
+      const matches: string[] = [];
+      let match;
+      while ((match = regex.exec(html)) !== null) {
+        const text = match[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+        if (text) matches.push(text);
+      }
+      return matches;
+    };
 
-      return {
-        metaTitle: document.title,
-        h1s: h1Elements.map((el) => clean((el as HTMLElement).innerText)),
-        ctas: ctaElements
-          .map((el) => clean((el as HTMLElement).innerText))
-          .filter((t) => t.length > 0 && t.length < 40)
-          .slice(0, 8),
-        paragraphs: pElements
-          .map((el) => clean((el as HTMLElement).innerText))
-          .filter((t) => t.length > 20)
-          .slice(0, 5),
-      };
-    });
-
-    await browser.close();
+    const h1s = extractTags('h1');
+    const ctas = [...extractTags('button'), ...extractTags('a')]
+      .filter((t) => t.length > 0 && t.length < 40)
+      .slice(0, 10);
+    const paragraphs = extractTags('p')
+      .filter((t) => t.length > 20)
+      .slice(0, 5);
 
     // 2. Analyze with Gemini AI
     const prompt = `Analyze this landing page context for conversion flaws:
-Title: ${extracted.metaTitle}
-H1 Headlines: ${JSON.stringify(extracted.h1s)}
-CTAs: ${JSON.stringify(extracted.ctas)}
-Paragraph Samples: ${JSON.stringify(extracted.paragraphs)}
+Title: ${metaTitle}
+H1 Headlines: ${JSON.stringify(h1s)}
+CTAs: ${JSON.stringify(ctas)}
+Paragraph Samples: ${JSON.stringify(paragraphs)}
 
 Return strictly valid JSON with this shape:
 {
@@ -80,8 +78,8 @@ Return strictly valid JSON with this shape:
   ]
 }`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+    const aiResponse = await ai.models.generateContent({
+      model: 'gemini-2.0-flash', // Updated to stable flash model
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -89,12 +87,14 @@ Return strictly valid JSON with this shape:
       },
     });
 
-    const textContent = response.text || '';
-    const auditData = JSON.parse(textContent);
+    const rawText = aiResponse.text || '';
+    
+    // Clean potential markdown fences before parsing
+    const cleanedText = rawText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    const auditData = JSON.parse(cleanedText);
 
     return NextResponse.json({ success: true, url: targetUrl, audit: auditData });
   } catch (error: any) {
-    if (browser) await browser.close();
     console.error('Audit Error:', error);
     return NextResponse.json(
       { error: error.message || 'Failed to audit page' },
