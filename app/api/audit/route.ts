@@ -31,18 +31,18 @@ export async function POST(req: NextRequest) {
 
     const prompt = `Analyze this landing page HTML for UX and CRO improvements. Return JSON with overall_score (0-100), key_issues (array of strings), and recommendations (array of strings):\n\n${truncatedHtml}`;
 
-    // 2. Execute AI Model Call with Fallback for 503 capacity issues
+    // Execute AI Model Call using gemini-3.8-flash with fallback
     let modelResponse;
     try {
       modelResponse = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.8-flash',
         contents: prompt,
         config: { responseMimeType: 'application/json' },
       });
     } catch (err: any) {
-      // Fallback to gemini-1.5-flash if primary model experiences high demand
+      // Fallback to gemini-2.5-flash if gemini-3.8-flash hits temporary 503 high demand
       modelResponse = await ai.models.generateContent({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-3.8-flash',
         contents: prompt,
         config: { responseMimeType: 'application/json' },
       });
