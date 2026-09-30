@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 
-export const maxDuration = 60;
-
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY || '',
-});
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export async function POST(req: NextRequest) {
   try {
@@ -15,56 +11,50 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'URL is required' }, { status: 400 });
     }
 
-    let targetUrl = url.trim();
-    if (!/^https?:\/\//i.test(targetUrl)) {
-      targetUrl = `https://${targetUrl}`;
-    }
-
-    const response = await fetch(targetUrl, {
+    // 1. Fetch page HTML
+    const response = await fetch(url, {
       headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       },
     });
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: `Failed to fetch page: ${response.statusText}` },
-        { status: 400 }
+        { error: `Failed to fetch target URL: ${response.statusText}` },
+        { status: response.status }
       );
     }
 
     const html = await response.text();
-    const cleanHtml = html
-      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
-      .slice(0, 8000);
+    // Simple HTML content truncation to fit within model prompt context
+    const truncatedHtml = html.substring(0, 15000);
 
-    const prompt = `You are an expert UX and conversion rate optimization (CRO) consultant. Analyze the following landing page HTML content and return a JSON response with:
-1. "score" (number from 0 to 100)
-2. "summary" (brief high-level feedback)
-3. "strengths" (array of strings)
-4. "improvements" (array of strings with actionable CRO fixes)
+    const prompt = `Analyze this landing page HTML for UX and CRO improvements. Return JSON with overall_score (0-100), key_issues (array of strings), and recommendations (array of strings):\n\n${truncatedHtml}`;
 
-Landing Page Content:
-${cleanHtml}`;
+    // 2. Execute AI Model Call with Fallback for 503 capacity issues
+    let modelResponse;
+    try {
+      modelResponse = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: { responseMimeType: 'application/json' },
+      });
+    } catch (err: any) {
+      // Fallback to gemini-1.5-flash if primary model experiences high demand
+      modelResponse = await ai.models.generateContent({
+        model: 'gemini-1.5-flash',
+        contents: prompt,
+        config: { responseMimeType: 'application/json' },
+      });
+    }
 
-    const modelResponse = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-      },
-    });
-
-    const resultText = modelResponse.text || '{}';
-    const auditData = JSON.parse(resultText);
+    const resultText = modelResponse.text;
+    const auditData = JSON.parse(resultText || '{}');
 
     return NextResponse.json(auditData);
   } catch (error: any) {
-    console.error('Audit handler error:', error);
     return NextResponse.json(
-      { error: error.message || 'An unexpected error occurred during audit' },
+      { error: error.message || 'An error occurred during audit' },
       { status: 500 }
     );
   }
