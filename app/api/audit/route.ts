@@ -26,30 +26,33 @@ export async function POST(req: NextRequest) {
     }
 
     const html = await response.text();
-    // Simple HTML content truncation to fit within model prompt context
     const truncatedHtml = html.substring(0, 15000);
 
     const prompt = `Analyze this landing page HTML for UX and CRO improvements. Return JSON with overall_score (0-100), key_issues (array of strings), and recommendations (array of strings):\n\n${truncatedHtml}`;
 
-    // Execute AI Model Call using gemini-3.8-flash with fallback
-    let modelResponse;
-    try {
-      modelResponse = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: prompt,
-        config: { responseMimeType: 'application/json' },
-      });
-    } catch (err: any) {
-      // Fallback to gemini-2.5-flash if gemini-3.8-flash hits temporary 503 high demand
-      modelResponse = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: prompt,
-        config: { responseMimeType: 'application/json' },
-      });
+    // 2. AI Model Call with Auto-Retry for 503 capacity errors
+    let modelResponse: any;
+    let attempts = 0;
+    const maxAttempts = 3;
+
+    while (attempts < maxAttempts) {
+      try {
+        attempts++;
+        modelResponse = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: prompt,
+          config: { responseMimeType: 'application/json' },
+        });
+        break; 
+      } catch (err: any) {
+        if (attempts >= maxAttempts) throw err;
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
     }
 
-    const resultText = modelResponse.text;
-    const auditData = JSON.parse(resultText || '{}');
+    // Safely extract text string from response object
+    const resultText = modelResponse?.text || '{}';
+    const auditData = JSON.parse(resultText);
 
     return NextResponse.json(auditData);
   } catch (error: any) {
