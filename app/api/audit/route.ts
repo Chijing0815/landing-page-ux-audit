@@ -36,18 +36,30 @@ export async function POST(req: NextRequest) {
     ${truncatedHtml}`;
 
     let resultText = '';
+    const modelsToTry = ['gemini-3.8-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+    let success = false;
+    let lastError = '';
 
-    try {
-      // Updated to the exact model requested by the API error message
-      const modelResponse: any = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: prompt,
-        config: { responseMimeType: 'application/json' },
-      });
-      resultText = modelResponse?.text || '{}';
-    } catch (aiError: any) {
-      console.error("Gemini error:", aiError);
-      throw new Error(aiError?.message || 'Gemini API generation failed.');
+    // Try multiple models in case one is experiencing high demand
+    for (const modelName of modelsToTry) {
+      try {
+        const modelResponse: any = await ai.models.generateContent({
+          model: modelName,
+          contents: prompt,
+          config: { responseMimeType: 'application/json' },
+        });
+        resultText = modelResponse?.text || '';
+        if (resultText) {
+          success = true;
+          break;
+        }
+      } catch (err: any) {
+        lastError = err?.message || JSON.stringify(err);
+      }
+    }
+
+    if (!success) {
+      throw new Error(`All models busy or failed. Last error: ${lastError}`);
     }
 
     const auditData = JSON.parse(resultText);
