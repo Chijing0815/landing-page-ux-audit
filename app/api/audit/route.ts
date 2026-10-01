@@ -25,11 +25,17 @@ export async function POST(req: NextRequest) {
     }
 
     const html = await response.text();
-    const truncatedHtml = html.substring(0, 15000);
+    const truncatedHtml = html.substring(0, 12000);
 
-    const prompt = `Analyze this landing page HTML for UX and CRO improvements. Return JSON with overall_score (0-100), key_issues (array of strings), and recommendations (array of strings):\n\n${truncatedHtml}`;
+    const prompt = `You are a strict, objective UX and CRO (Conversion Rate Optimization) expert. Analyze the following webpage HTML snippet from ${url}. 
+    Provide a realistic, unique score between 55 and 98 based strictly on its actual structure. Do not output generic answers.
+    Return ONLY a valid JSON object with this exact structure:
+    {
+      "overall_score": <number between 55-98>,
+      "key_issues": [<array of 3 distinct, specific issues found in the HTML>],
+      "recommendations": [<array of 3 distinct, specific, actionable recommendations>]
+    }`;
 
-    // Trying the model call directly without fallback so we can see the exact error if it fails
     const modelResponse: any = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
@@ -41,9 +47,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(auditData);
 
   } catch (error: any) {
-    // This will now pass the exact error message to your UI so you can see what's going wrong
     return NextResponse.json(
-      { error: `API Error: ${error.message || JSON.stringify(error)}` },
+      { error: `Live Audit Error: ${error.message || 'Check API key or network connection.'}` },
       { status: 500 }
     );
   }
