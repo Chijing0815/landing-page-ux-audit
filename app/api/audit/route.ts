@@ -25,30 +25,37 @@ export async function POST(req: NextRequest) {
     }
 
     const html = await response.text();
-    const truncatedHtml = html.substring(0, 12000);
+    const truncatedHtml = html.substring(0, 15000);
 
-    const prompt = `You are a strict, objective UX and CRO (Conversion Rate Optimization) expert. Analyze the following webpage HTML snippet from ${url}. 
-    Provide a realistic, unique score between 55 and 98 based strictly on its actual structure. Do not output generic answers.
-    Return ONLY a valid JSON object with this exact structure:
-    {
-      "overall_score": <number between 55-98>,
-      "key_issues": [<array of 3 distinct, specific issues found in the HTML>],
-      "recommendations": [<array of 3 distinct, specific, actionable recommendations>]
-    }`;
+    const prompt = `You are a strict, objective UX and CRO expert. Analyze this webpage HTML from ${url} and return a JSON object with:
+    - "overall_score": a realistic number between 50 and 95 based on the code quality and layout cues.
+    - "key_issues": an array of 3 specific issues found in this page.
+    - "recommendations": an array of 3 actionable fixes for this specific page.
 
-    const modelResponse: any = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: { responseMimeType: 'application/json' },
-    });
+    HTML Content:
+    ${truncatedHtml}`;
 
-    const resultText = modelResponse?.text || '{}';
+    let resultText = '';
+
+    try {
+      // Updated to the exact model requested by the API error message
+      const modelResponse: any = await ai.models.generateContent({
+        model: 'gemini-3.8-flash',
+        contents: prompt,
+        config: { responseMimeType: 'application/json' },
+      });
+      resultText = modelResponse?.text || '{}';
+    } catch (aiError: any) {
+      console.error("Gemini error:", aiError);
+      throw new Error(aiError?.message || 'Gemini API generation failed.');
+    }
+
     const auditData = JSON.parse(resultText);
     return NextResponse.json(auditData);
 
   } catch (error: any) {
     return NextResponse.json(
-      { error: `Live Audit Error: ${error.message || 'Check API key or network connection.'}` },
+      { error: error.message || 'An error occurred during audit' },
       { status: 500 }
     );
   }
