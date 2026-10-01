@@ -25,26 +25,25 @@ export async function POST(req: NextRequest) {
     }
 
     const html = await response.text();
-    const truncatedHtml = html.substring(0, 10000);
+    const truncatedHtml = html.substring(0, 8000);
 
     const prompt = `You are a strict, objective UX and CRO expert. Analyze this webpage HTML from ${url} and return ONLY a valid JSON object with no markdown formatting, structured exactly like this:
     {
-      "overall_score": 85,
-      "key_issues": ["Issue 1 here", "Issue 2 here", "Issue 3 here"],
-      "recommendations": ["Fix 1 here", "Fix 2 here", "Fix 3 here"]
+      "overall_score": <number between 55 and 95 based on this specific page>,
+      "key_issues": ["issue 1", "issue 2", "issue 3"],
+      "recommendations": ["recommendation 1", "recommendation 2", "recommendation 3"]
     }
 
     HTML Content:
     ${truncatedHtml}`;
 
-    // Let's use the standard flash model string directly
+    // Using the exact model string the SDK expects
     const modelResponse: any = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.8-flash',
       contents: prompt,
     });
 
     let resultText = modelResponse?.text || '{}';
-    // Clean up any markdown code blocks if the model includes them
     resultText = resultText.replace(/```json/g, '').replace(/```/g, '').trim();
 
     const auditData = JSON.parse(resultText);
