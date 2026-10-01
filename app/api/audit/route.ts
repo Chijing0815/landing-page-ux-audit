@@ -27,40 +27,25 @@ export async function POST(req: NextRequest) {
     const html = await response.text();
     const truncatedHtml = html.substring(0, 10000);
 
-    const prompt = `You are a strict, objective UX and CRO expert. Analyze this webpage HTML from ${url} and return a JSON object with:
-    - "overall_score": a realistic number between 50 and 95 based on the code quality and layout cues.
-    - "key_issues": an array of 3 specific issues found in this page.
-    - "recommendations": an array of 3 actionable fixes for this specific page.
+    const prompt = `You are a strict, objective UX and CRO expert. Analyze this webpage HTML from ${url} and return ONLY a valid JSON object with no markdown formatting, structured exactly like this:
+    {
+      "overall_score": 85,
+      "key_issues": ["Issue 1 here", "Issue 2 here", "Issue 3 here"],
+      "recommendations": ["Fix 1 here", "Fix 2 here", "Fix 3 here"]
+    }
 
     HTML Content:
     ${truncatedHtml}`;
 
-    let resultText = '';
+    // Let's use the standard flash model string directly
+    const modelResponse: any = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+    });
 
-    try {
-      // Using the exact model string required by the API
-      const modelResponse: any = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: prompt,
-        config: { responseMimeType: 'application/json' },
-      });
-      resultText = modelResponse?.text || '{}';
-    } catch (apiError: any) {
-      // Graceful fallback just in case of temporary 503 high-demand spikes
-      resultText = JSON.stringify({
-        overall_score: 79,
-        key_issues: [
-          "Hero section layout structure creates visual friction for scanning users.",
-          "Call-to-action color contrast needs optimization against background elements.",
-          "DOM element density above the fold is delaying initial interaction markers."
-        ],
-        recommendations: [
-          "Refine typography scaling to emphasize primary conversion hooks.",
-          "Increase color contrast ratios on principal interactive buttons.",
-          "Streamline top-level navigation components for immediate clarity."
-        ]
-      });
-    }
+    let resultText = modelResponse?.text || '{}';
+    // Clean up any markdown code blocks if the model includes them
+    resultText = resultText.replace(/```json/g, '').replace(/```/g, '').trim();
 
     const auditData = JSON.parse(resultText);
     return NextResponse.json(auditData);
