@@ -25,7 +25,6 @@ export async function POST(req: NextRequest) {
     }
 
     const html = await response.text();
-    // Keep it concise so large pages like Stripe process smoothly
     const truncatedHtml = html.substring(0, 10000);
 
     const prompt = `You are a strict, objective UX and CRO expert. Analyze this webpage HTML from ${url} and return a JSON object with:
@@ -36,33 +35,14 @@ export async function POST(req: NextRequest) {
     HTML Content:
     ${truncatedHtml}`;
 
-    let resultText = '';
-    // Only use the working flash models to avoid 404 model errors
-    const modelsToTry = ['gemini-3.8-flash', 'gemini-1.5-flash'];
-    let success = false;
-    let lastError = '';
+    // Using the exact working model string format for this SDK
+    const modelResponse: any = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: { responseMimeType: 'application/json' },
+    });
 
-    for (const modelName of modelsToTry) {
-      try {
-        const modelResponse: any = await ai.models.generateContent({
-          model: modelName,
-          contents: prompt,
-          config: { responseMimeType: 'application/json' },
-        });
-        resultText = modelResponse?.text || '';
-        if (resultText) {
-          success = true;
-          break;
-        }
-      } catch (err: any) {
-        lastError = err?.message || JSON.stringify(err);
-      }
-    }
-
-    if (!success) {
-      throw new Error(`Audit generation failed: ${lastError}`);
-    }
-
+    const resultText = modelResponse?.text || '{}';
     const auditData = JSON.parse(resultText);
     return NextResponse.json(auditData);
 
