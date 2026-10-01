@@ -25,7 +25,8 @@ export async function POST(req: NextRequest) {
     }
 
     const html = await response.text();
-    const truncatedHtml = html.substring(0, 15000);
+    // Keep it concise so large pages like Stripe process smoothly
+    const truncatedHtml = html.substring(0, 10000);
 
     const prompt = `You are a strict, objective UX and CRO expert. Analyze this webpage HTML from ${url} and return a JSON object with:
     - "overall_score": a realistic number between 50 and 95 based on the code quality and layout cues.
@@ -36,11 +37,11 @@ export async function POST(req: NextRequest) {
     ${truncatedHtml}`;
 
     let resultText = '';
-    const modelsToTry = ['gemini-3.8-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+    // Only use the working flash models to avoid 404 model errors
+    const modelsToTry = ['gemini-3.8-flash', 'gemini-1.5-flash'];
     let success = false;
     let lastError = '';
 
-    // Try multiple models in case one is experiencing high demand
     for (const modelName of modelsToTry) {
       try {
         const modelResponse: any = await ai.models.generateContent({
@@ -59,7 +60,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!success) {
-      throw new Error(`All models busy or failed. Last error: ${lastError}`);
+      throw new Error(`Audit generation failed: ${lastError}`);
     }
 
     const auditData = JSON.parse(resultText);
