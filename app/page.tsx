@@ -1,144 +1,96 @@
 'use client';
 
-import React, { useState } from 'react';
-import { GoogleGenAI } from '@google/genai';
+import { useState } from 'react';
 
 export default function Home() {
   const [url, setUrl] = useState('');
-  const [result, setResult] = useState<any>(null);
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [audit, setAudit] = useState<any>(null);
+  const [error, setError] = useState('');
 
-  const handleAudit = async () => {
-    if (!url) {
-      setError('Please enter a valid URL');
-      return;
-    }
-    setError('');
-    setResult(null);
+  const handleAudit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setLoading(true);
+    setAudit(null);
+    setError('');
 
     try {
-      const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+      const res = await fetch('/api/audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
 
-      // If API key is missing on Vercel, provide an instant professional audit response
-      if (!apiKey) {
-        setTimeout(() => {
-          setResult({
-            overall_score: 84,
-            key_issues: [
-              "Primary call-to-action button lacks sufficient visual contrast.",
-              "Above-the-fold layout contains too much competing text.",
-              "Value proposition headline could be sharper and more direct."
-            ],
-            recommendations: [
-              "Use a bold, high-contrast accent color for the main submit button.",
-              "Streamline headline text to improve initial scannability.",
-              "Add customer proof or testimonials near the primary conversion area."
-            ]
-          });
-          setLoading(false);
-        }, 800);
-        return;
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to generate audit');
       }
 
-      const ai = new GoogleGenAI({ apiKey });
-      const prompt = `Analyze the landing page URL: ${url} for UX and CRO improvements. Return valid JSON only with keys: overall_score (number 0-100), key_issues (array of strings), recommendations (array of strings).`;
-
-      const response: any = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: { responseMimeType: 'application/json' },
-      });
-
-      const text = response?.text || '{}';
-      setResult(JSON.parse(text));
+      setAudit(data);
     } catch (err: any) {
-      // Graceful fallback on any network or API error
-      setResult({
-        overall_score: 82,
-        key_issues: [
-          "Primary call-to-action button lacks strong contrasting color.",
-          "Above-the-fold area contains too much text clutter.",
-          "Value proposition headline can be more punchy and direct."
-        ],
-        recommendations: [
-          "Use a high-contrast accent color for your primary CTA button.",
-          "Simplify the main hero section copy to improve readability.",
-          "Add trust signals or user testimonials near the sign-up form."
-        ]
-      });
+      setError(err.message || 'Something went wrong');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <main className="min-h-screen bg-[#0b0f19] text-white flex flex-col items-center p-6 sm:p-12">
-      <h1 className="text-4xl sm:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-green-400 mb-2 text-center">
+    <main className="min-h-screen bg-slate-950 text-white flex flex-col items-center p-6">
+      <h1 className="text-4xl font-extrabold text-emerald-400 mt-10 mb-2">
         Landing Page UX & Conversion Auditor
       </h1>
-      <p className="text-gray-400 mb-8 text-center">
-        Paste your URL below to get an instant AI-powered CRO score and actionable conversion fixes.
+      <p className="text-slate-400 mb-8">
+        Paste your URL below to get a real, uncompromised AI-powered CRO audit.
       </p>
 
-      <div className="flex flex-col sm:flex-row gap-3 w-full max-w-2xl mb-8">
+      <form onSubmit={handleAudit} className="flex w-full max-w-xl gap-2 mb-8">
         <input
           type="url"
+          required
           placeholder="https://example.com"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          className="flex-1 bg-[#151b2b] border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-teal-400"
+          className="flex-1 bg-slate-900 border border-slate-800 px-4 py-3 rounded-lg text-white focus:outline-none focus:border-emerald-500"
         />
         <button
-          type="button"
-          onClick={handleAudit}
+          type="submit"
           disabled={loading}
-          className="bg-blue-600 hover:bg-blue-500 font-semibold px-6 py-3 rounded-lg transition disabled:opacity-50 cursor-pointer flex items-center justify-center min-w-[120px]"
+          className="bg-blue-600 hover:bg-blue-500 px-6 py-3 rounded-lg font-semibold transition disabled:opacity-50"
         >
-          {loading ? (
-            <span className="flex items-center gap-2">
-              <svg className="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-              </svg>
-              Auditing...
-            </span>
-          ) : (
-            'Audit Page'
-          )}
+          {loading ? 'Auditing...' : 'Audit Page'}
         </button>
-      </div>
+      </form>
 
       {error && (
-        <div className="w-full max-w-2xl bg-red-950/50 border border-red-500 text-red-200 p-4 rounded-lg mb-6">
-          {error}
+        <div className="w-full max-w-xl bg-red-950/50 border border-red-800 p-4 rounded-lg text-red-200 mb-6">
+          <strong>Error:</strong> {error}
         </div>
       )}
 
-      {result && (
-        <div className="w-full max-w-2xl bg-[#151b2b] border border-gray-800 rounded-xl p-6 shadow-xl space-y-6 animate-fade-in">
-          <div className="flex items-center justify-between border-b border-gray-800 pb-4">
-            <h2 className="text-xl font-bold text-gray-200">Audit Results</h2>
-            <div className="text-2xl font-black text-teal-400 bg-teal-950/60 px-4 py-1 rounded-full border border-teal-800">
-              Score: {result.overall_score}/100
-            </div>
+      {audit && (
+        <div className="w-full max-w-xl bg-slate-900 border border-slate-800 p-6 rounded-xl shadow-xl">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold">Audit Results</h2>
+            <span className="text-lg font-bold bg-emerald-950 text-emerald-400 px-4 py-1.5 rounded-full border border-emerald-800">
+              Score: {audit.overall_score}/100
+            </span>
           </div>
 
-          <div>
-            <h3 className="text-lg font-semibold text-red-400 mb-2">Key Issues Identified</h3>
-            <ul className="list-disc list-inside space-y-1 text-gray-300">
-              {result.key_issues?.map((issue: string, idx: number) => (
-                <li key={idx}>{issue}</li>
+          <div className="mb-4">
+            <h3 className="text-red-400 font-semibold mb-2">Key Issues Identified</h3>
+            <ul className="list-disc list-inside space-y-1 text-slate-300 text-sm">
+              {audit.key_issues?.map((issue: string, i: number) => (
+                <li key={i}>{issue}</li>
               ))}
             </ul>
           </div>
 
           <div>
-            <h3 className="text-lg font-semibold text-green-400 mb-2">Actionable Recommendations</h3>
-            <ul className="list-disc list-inside space-y-1 text-gray-300">
-              {result.recommendations?.map((rec: string, idx: number) => (
-                <li key={idx}>{rec}</li>
+            <h3 className="text-emerald-400 font-semibold mb-2">Actionable Recommendations</h3>
+            <ul className="list-disc list-inside space-y-1 text-slate-300 text-sm">
+              {audit.recommendations?.map((rec: string, i: number) => (
+                <li key={i}>{rec}</li>
               ))}
             </ul>
           </div>
