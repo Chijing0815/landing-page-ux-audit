@@ -67,8 +67,8 @@ export default function Home() {
   };
 
   const handleUpgrade = () => {
-    // Replace this URL with your actual Stripe Payment Link (e.g., https://buy.stripe.com/your_link_id)
-    window.location.href = 'https://stripe.com';
+    // Paste your exact Stripe payment link here
+    window.location.href = 'https://buy.stripe.com/test_8x214m1Wf5gP6dpfPK0Fi00';
   };
 
   return (
