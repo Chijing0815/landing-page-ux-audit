@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { GoogleGenAI } from '@google/genai';
+
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 export async function POST(req: NextRequest) {
   try {
@@ -8,63 +11,51 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'URL is required' }, { status: 400 });
     }
 
-    // Generate a pseudo-random score based on the URL characters
-    let hash = 0;
-    for (let i = 0; i < url.length; i++) {
-      hash = (hash << 5) - hash + url.charCodeAt(i);
-      hash |= 0;
-    }
-    const positiveHash = Math.abs(hash);
-    const overall_score = 62 + (positiveHash % 33);
-
-    const domain = url.toLowerCase();
-    
-    // Default issues and recommendations
-    let key_issues = [
-      "Hero section layout structure creates visual friction for scanning users.",
-      "Call-to-action color contrast needs optimization against background elements.",
-      "DOM element density above the fold is delaying initial interaction markers."
-    ];
-    let recommendations = [
-      "Refine typography scaling to emphasize primary conversion hooks.",
-      "Increase color contrast ratios on principal interactive buttons.",
-      "Streamline top-level navigation components for immediate clarity."
-    ];
-
-    if (domain.includes('github')) {
-      key_issues = [
-        "Information density in the repository hero header causes cognitive load for new visitors.",
-        "Secondary call-to-action buttons compete directly with the primary sign-up conversion path.",
-        "Above-the-fold whitespace utilization could be optimized for faster visual scanning."
-      ];
-      recommendations = [
-        "Streamline primary navigation items to emphasize developer onboarding actions.",
-        "Increase visual contrast on the main registration button element.",
-        "Reduce initial DOM element weight to improve First Contentful Paint metrics."
-      ];
-    } else if (domain.includes('stripe')) {
-      key_issues = [
-        "Color contrast on secondary value proposition text falls slightly below WCAG AA standards.",
-        "Footer layout hierarchy spreads critical trust signals across too many columns.",
-        "Interactive documentation preview cards lack immediate visual feedback states."
-      ];
-      recommendations = [
-        "Enhance typography darkness on body copy to boost readability scores.",
-        "Consolidate trust badges and security certifications into a unified focal block.",
-        "Add micro-interactions or hover states to code snippet preview elements."
-      ];
-    }
-
-    // Return the polished audit payload cleanly
-    return NextResponse.json({
-      overall_score,
-      key_issues,
-      recommendations
+    // Fetch the live webpage HTML so the AI actually analyzes it
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      },
     });
+
+    if (!response.ok) {
+      return NextResponse.json(
+        { error: `Failed to fetch target URL: ${response.statusText}` },
+        { status: response.status }
+      );
+    }
+
+    const html = await response.text();
+    const truncatedHtml = html.substring(0, 10000);
+
+    const prompt = `You are an expert UX and Conversion Rate Optimization (CRO) auditor. Analyze this HTML content from ${url} and provide a realistic evaluation.
+    
+    Return ONLY a valid JSON object with this exact structure, containing no markdown or extra text:
+    {
+      "overall_score": <number between 60 and 95>,
+      "key_issues": ["Issue 1 specific to this site", "Issue 2 specific to this site", "Issue 3 specific to this site"],
+      "recommendations": ["Recommendation 1 for this site", "Recommendation 2 for this site", "Recommendation 3 for this site"]
+    }
+
+    HTML Content snippet:
+    ${truncatedHtml}`;
+
+    // Using gemini-2.5-flash for stable, real-time AI generation
+    const modelResponse: any = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+    });
+
+    let resultText = modelResponse?.text || '{}';
+    // Strip any markdown blocks if the model includes them
+    resultText = resultText.replace(/```json/g, '').replace(/```/g, '').trim();
+
+    const auditData = JSON.parse(resultText);
+    return NextResponse.json(auditData);
 
   } catch (error: any) {
     return NextResponse.json(
-      { error: error.message || 'An error occurred during audit' },
+      { error: error.message || 'An error occurred during AI audit generation' },
       { status: 500 }
     );
   }
